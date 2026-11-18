@@ -1,2 +1,5 @@
 ROLES = ('admin', 'operator', 'viewer')
 DRILL_STATUSES = ('queued', 'running', 'completed', 'failed')
+FAILOVER_ROLE_STATES = ('stable', 'blocked', 'promoted')
+FAILOVER_TASK_STATES = ('original', 'blocked', 'resumed', 'promoted')
+FAILOVER_ATTEMPT_STATUSES = ('blocked', 'resumed', 'promoted', 'rejected')

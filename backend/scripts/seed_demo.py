@@ -1,7 +1,7 @@
 import os
 from sqlalchemy import select
 from src.config.database import Base,engine,Session
-from src.models.entities import User,LogSet,CrashCase
+from src.models.entities import User,LogSet,CrashCase,FailoverCluster
 from src.utils.security import hash_password
 RECORDS=[{'op':'begin','tx':'T1'},{'op':'write','tx':'T1','key':'sample_A','value':75},{'op':'commit','tx':'T1'},{'op':'checkpoint'},{'op':'begin','tx':'T2'},{'op':'write','tx':'T2','key':'sample_B','value':40},{'op':'begin','tx':'T3'},{'op':'write','tx':'T3','key':'sample_A','value':60},{'op':'commit','tx':'T3'},{'op':'write','tx':'T2','key':'sample_B','value':35},{'op':'commit','tx':'T2'}]
 def seed():
@@ -16,5 +16,14 @@ def seed():
             logs=LogSet(name='海砾采样账本-晚班',description='A初始100份、B初始50份，T1提交后检查点，T2未提交，T3已提交',initial={'sample_A':100,'sample_B':50},records=RECORDS);db.add(logs);db.flush()
         for name,point in [('断电点10-撤销T2',10),('完整提交点11',11),('初始点0',0)]:
             if not db.scalar(select(CrashCase).where(CrashCase.name==name)):db.add(CrashCase(name=name,log_set_id=logs.id,crash_after=point))
+        # 主备切换演练样例：接收落后（升主被阻止）与重放落后（可安全升主）。
+        for name,confirmed,received,replayed in [('晚班主备-接收落后',9,7,7),('晚班主备-重放落后',9,11,9)]:
+            if not db.scalar(select(FailoverCluster).where(FailoverCluster.name==name)):
+                gap=max(0,confirmed-received)
+                db.add(FailoverCluster(name=name,log_set_id=logs.id,primary_name='primary-a',standby_name='standby-b',
+                    confirmed_commit_lsn=confirmed,standby_received_lsn=received,standby_replayed_lsn=replayed,
+                    role_state='blocked' if gap else 'stable',task_state='blocked' if gap else 'original',
+                    active_primary='primary-a',current_term=0,writes_open=not gap,
+                    ledger={'sample_A':60,'sample_B':50}))
         db.commit()
 if __name__=='__main__':seed()
